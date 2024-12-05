@@ -1,10 +1,12 @@
 {
     "name": "winston-web-transport",
     "version": "1.0.0",
-    "main": "index.js",
+    "main": "./dist/main.js",
+    "types": "./dist/main.d.ts",
     "scripts": {
         "format": "npx prettier --write .",
-        "dev": "tsx watch ./test/test.ts"
+        "dev": "tsx watch ./test/test.ts",
+        "build": "tsc"
     },
     "keywords": [],
     "author": "",
