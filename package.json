@@ -1,8 +1,8 @@
 {
     "name": "winston-web-transport",
-    "version": "1.0.0",
-    "main": "./dist/main.js",
-    "types": "./dist/main.d.ts",
+    "version": "1.0.3",
+    "main": "./dist/src/main.js",
+    "types": "./dist/src/main.d.ts",
     "scripts": {
         "format": "npx prettier --write .",
         "dev": "tsx watch ./test/test.ts",

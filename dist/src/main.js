@@ -13,6 +13,7 @@ const cookie_1 = require("cookie")
 const crypto_1 = __importDefault(require("crypto"))
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"))
 const moment_1 = __importDefault(require("moment"))
+const fs_1 = require("fs")
 class WebTransport extends winston_transport_1.default {
     constructor(options) {
         super(options)
@@ -33,6 +34,7 @@ class WebTransport extends winston_transport_1.default {
             res.sendStatus(401)
         })
         if (options.sqlite) {
+            ;(0, fs_1.mkdirSync)((0, path_1.parse)(options.sqlite.filepath).dir, { recursive: true })
             this.database = new better_sqlite3_1.default(options.sqlite.filepath)
             // With date as number
             this.database.exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, log TEXT, date INTEGER)")

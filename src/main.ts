@@ -11,6 +11,7 @@ import crypto from "crypto"
 import Database from "better-sqlite3"
 
 import moment from "moment"
+import { existsSync, mkdir, mkdirSync } from "fs"
 
 export default class WebTransport extends Transport {
     server: http.Server
@@ -56,6 +57,7 @@ export default class WebTransport extends Transport {
         })
 
         if (options.sqlite) {
+            mkdirSync(parse(options.sqlite.filepath).dir, { recursive: true })
             this.database = new Database(options.sqlite.filepath)
 
             // With date as number
