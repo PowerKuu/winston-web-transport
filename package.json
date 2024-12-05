@@ -1,0 +1,25 @@
+{
+    "name": "winston-web-transport",
+    "version": "1.0.0",
+    "main": "index.js",
+    "scripts": {
+        "format": "npx prettier --write ."
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "description": "",
+    "dependencies": {
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.10.1",
+        "express": "^4.21.1",
+        "winston": "^3.17.0",
+        "winston-transport": "^4.9.0",
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "@types/cookie": "^0.6.0",
+        "@types/ws": "^8.5.13",
+        "cookie": "^1.0.2"
+    }
+}

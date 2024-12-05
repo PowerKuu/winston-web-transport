@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Document</title>
+
+        <script src="
+https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js
+"></script>
+        <script src="
+https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js
+"></script>
+
+        <link
+            href="
+https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css
+"
+            rel="stylesheet"
+        />
+
+        <style>
+            :root {
+                --background: #282a36;
+                --selction: #97979b33;
+            }
+            body {
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 1rem;
+                margin: 0;
+                padding: 0;
+                background-color: var(--background);
+                overflow: hidden;
+
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            #terminal {
+                width: calc(100% - 2rem);
+                height: calc(100% - 2rem);
+            }}
+
+            .xterm .xterm-viewport {
+                /* On OS X this is required in order for the scroll bar to appear fully opaque */
+                background-color: transparent;
+                overflow-y: scroll;
+                cursor: default;
+                position: absolute;
+                right: 0;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                scrollbar-color: var(--selction) var(--background);
+                scrollbar-width: thin;
+            }
+
+            .xterm-viewport::-webkit-scrollbar {
+                background-color: var(--background);
+                width: 5px;
+            }
+
+            .xterm-viewport::-webkit-scrollbar-thumb {
+                background: var(--selction);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="terminal"></div>
+
+        <script>
+            const terminalElement = document.getElementById("terminal")
+
+            const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue("--background")
+            const selectionColor = getComputedStyle(document.documentElement).getPropertyValue("--selction")
+
+            var theme = {
+                foreground: "#eff0eb",
+                background: backgroundColor,
+                selection: selectionColor,
+                black: backgroundColor,
+                brightBlack: "#686868",
+                red: "#ff5c57",
+                brightRed: "#ff5c57",
+                green: "#5af78e",
+                brightGreen: "#5af78e",
+                yellow: "#f3f99d",
+                brightYellow: "#f3f99d",
+                blue: "#57c7ff",
+                brightBlue: "#57c7ff",
+                magenta: "#ff6ac1",
+                brightMagenta: "#ff6ac1",
+                cyan: "#9aedfe",
+                brightCyan: "#9aedfe",
+                white: "#f1f1f0",
+                brightWhite: "#eff0eb"
+            }
+
+            const term = new Terminal({
+                fontFamily: '"Cascadia Code", Menlo, monospace',
+                theme: theme,
+                cursorBlink: true,
+                allowProposedApi: true
+            })
+            const fitAddon = new FitAddon.FitAddon()
+
+            term.loadAddon(fitAddon)
+
+            term.open(terminalElement)
+
+            // Add rezie observer on the terminal element
+            const resizeObserver = new ResizeObserver((entries) => {
+                fitAddon.fit()
+            })
+
+            resizeObserver.observe(terminalElement)
+
+            // Green color [LOG START]
+            term.writeln("\x1b[32m[LOG START]\x1b[0m\n")
+
+            function createTerminalInput(question) {
+                return new Promise((resolve) => {
+                    term.write(question)
+                    let input = ""
+                    // Current bug you can move the cursor with the arrow keys and delete the text
+                    function handleTerminalInput(e) {
+                        // Detect backspace
+                        if (e.domEvent.key === "Backspace") {
+                            if (input.length > 0) {
+                                input = input.slice(0, -1);
+                                term.write('\b \b');
+                            }
+                            return;
+                        }
+
+                        // Handle "Enter" key
+                        if (e.key === '\r') {
+                            term.writeln("");
+                            resolve(input);
+                            return;
+                        }
+
+                        input += e.key;
+                        term.write(e.key);
+                    }
+
+                    term.onKey(handleTerminalInput)
+                })
+            }
+
+            async function showLogin() {
+                term.clear()
+                term.writeln("Please login to continue")
+                const t = await createTerminalInput("Password: ")
+
+                console.log(t)
+            }
+
+            function connectWebsocket() {
+                term.clear()
+                const ws = new WebSocket("ws://localhost:3005")
+
+                ws.onmessage = ({ data: rawData }) => {
+                    const data = JSON.parse(rawData)
+
+                    if (data.event == "logs") {
+                        for (const log of data.data) {
+                            term.writeln(log)
+                        }
+                    }
+
+                    if (data.event == "log") {
+                        term.writeln(data.data)
+                    }
+                }
+
+                ws.onclose = ({ code }) => {
+                    if (code == 1008) {
+                        showLogin()
+                    }
+                }
+            }
+
+            connectWebsocket()
+        </script>
+    </body>
+</html>
