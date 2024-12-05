@@ -2,7 +2,7 @@
 
 This is a transport for winston which logs to a web server.
 
-![Thubmnail](./thumbnail.png)
+![Thubmnail](https://github.com/PowerKuu/winston-web-transport/blob/main/thumbnail.png?raw=true)
 
 ## Installation
 
