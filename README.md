@@ -1,3 +1,18 @@
+# Winston web transport
+
+This is a transport for winston which logs to a web server.
+
+![Thubmnail](./thumbnail.png)
+
+## Installation
+
+```bash
+npm install winston-web-transport
+```
+
+## Usage
+
+```ts
 import winston from "winston"
 import WebTransport from "../src/main"
 import { join } from "path"
@@ -23,7 +38,17 @@ export function createLogger() {
         handleRejections: true,
 
         transports: [
-            new winston.transports.Console(),
+            /*
+            port: number
+            password?: string
+            dateFormat?: string
+
+            sqlite?: {
+                filepath: string
+                pragnationDate?: number
+                pragnationLimit?: number
+            }
+            */
             new WebTransport({
                 port: 3000,
                 password: "123",
@@ -41,3 +66,4 @@ const logger = createLogger()
 setInterval(() => {
     logger.info("Hello, world!")
 }, 5000)
+```

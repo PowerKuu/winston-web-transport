@@ -117,50 +117,71 @@ https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css
 
             resizeObserver.observe(terminalElement)
 
-            // Green color [LOG START]
-            term.writeln("\x1b[32m[LOG START]\x1b[0m\n")
-
             function createTerminalInput(question) {
                 return new Promise((resolve) => {
                     term.write(question)
                     let input = ""
                     // Current bug you can move the cursor with the arrow keys and delete the text
+                    const { dispose } = term.onKey(handleTerminalInput)
+
                     function handleTerminalInput(e) {
-                        // Detect backspace
-                        if (e.domEvent.key === "Backspace") {
-                            if (input.length > 0) {
-                                input = input.slice(0, -1);
-                                term.write('\b \b');
-                            }
-                            return;
-                        }
+                        const key = e.key
+                        const domEvent = e.domEvent
 
                         // Handle "Enter" key
-                        if (e.key === '\r') {
-                            term.writeln("");
-                            resolve(input);
-                            return;
+                        if (key === "\r") {
+                            term.writeln("") // Move to the next line
+                            dispose() // Remove the event listener
+                            resolve(input)
+                            return
                         }
 
-                        input += e.key;
-                        term.write(e.key);
-                    }
+                        // Handle "Backspace" key
+                        if (domEvent.key === "Backspace") {
+                            if (input.length > 0) {
+                                input = input.slice(0, -1)
+                                term.write("\b \b") // Erase the last character
+                            }
+                            return
+                        }
 
-                    term.onKey(handleTerminalInput)
+                        // Ignore special keys (arrow keys, etc.)
+                        if (domEvent.key.length > 1) {
+                            return
+                        }
+
+                        // Add regular character to input
+                        input += key
+                        term.write(key)
+                    }
                 })
             }
 
             async function showLogin() {
                 term.clear()
                 term.writeln("Please login to continue")
-                const t = await createTerminalInput("Password: ")
+                const password = await createTerminalInput("Password: ")
 
-                console.log(t)
+                const res = await fetch("/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ password })
+                })
+
+                if (res.status == 200) {
+                    connectWebsocket()
+                } else {
+                    // Color red "Invalid password"
+                    term.writeln("\x1b[31mInvalid password\x1b[0m")
+                    setTimeout(() => showLogin(), 500)
+                }
             }
 
             function connectWebsocket() {
                 term.clear()
-                const ws = new WebSocket("ws://localhost:3005")
+                const ws = new WebSocket(`ws://${location.host}`)
 
                 ws.onmessage = ({ data: rawData }) => {
                     const data = JSON.parse(rawData)
