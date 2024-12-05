@@ -39,14 +39,28 @@ export function createLogger() {
 
         transports: [
             /*
-            port: number
-            password?: string
-            dateFormat?: string
+            {
+                port: number
+                password?: string
+                dateFormat?: string
 
-            sqlite?: {
-                filepath: string
-                pragnationDate?: number
-                pragnationLimit?: number
+                sqlite?: {
+                    pragnationDate?: number
+                    pragnationLimit?: number
+                } & (
+                    {
+                        filepath: string
+                        remote?: never
+                    }
+                    | {
+                        filepath?: never
+                        remote: {
+                            url: string
+                            username: string
+                            password: string
+                        }
+                    }
+                )
             }
             */
             new WebTransport({

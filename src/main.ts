@@ -8,10 +8,13 @@ import { WebSocketServer } from "ws"
 import { parse as parseCookie } from "cookie"
 
 import crypto from "crypto"
-import Database from "better-sqlite3"
+import SQLiteDatabase from "better-sqlite3"
 
 import moment from "moment"
-import { existsSync, mkdir, mkdirSync } from "fs"
+import { mkdirSync } from "fs"
+
+import { Client as postgresDatabase } from "pg"
+
 
 export default class WebTransport extends Transport {
     server: http.Server
@@ -20,16 +23,24 @@ export default class WebTransport extends Transport {
     ws: WebSocketServer
     authToken: string
 
-    database: Database.Database
+    sqLiteDatabase?: SQLiteDatabase.Database
+    postgresDatabase?: postgresDatabase
 
     constructor(
         public options: Transport.TransportStreamOptions & {
             port: number
             password?: string
             dateFormat?: string
-
+        
             sqlite?: {
                 filepath: string
+                pragnationDate?: number
+                pragnationLimit?: number
+            }
+
+            postgres?: {
+                connectionUri: string
+
                 pragnationDate?: number
                 pragnationLimit?: number
             }
@@ -58,10 +69,29 @@ export default class WebTransport extends Transport {
 
         if (options.sqlite) {
             mkdirSync(parse(options.sqlite.filepath).dir, { recursive: true })
-            this.database = new Database(options.sqlite.filepath)
+            this.sqLiteDatabase = new SQLiteDatabase(options.sqlite.filepath)
 
             // With date as number
-            this.database.exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, log TEXT, date INTEGER)")
+            this.sqLiteDatabase.exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, log TEXT, date INTEGER)")
+        }
+
+        if (options.postgres) {
+            this.postgresDatabase = new postgresDatabase({
+                connectionString: options.postgres.connectionUri,
+                ssl: {
+                    rejectUnauthorized: false
+                }
+            })
+
+            this.postgresDatabase.connect()
+
+            this.postgresDatabase.query(`
+                CREATE TABLE IF NOT EXISTS logs (
+                    id SERIAL PRIMARY KEY,
+                    log TEXT,
+                    date TIMESTAMP
+                )
+            `)
         }
 
         this.server = app.listen(options.port)
@@ -70,17 +100,15 @@ export default class WebTransport extends Transport {
         const date = moment().format(options.dateFormat || "YYYY-MM-DD HH:mm:ss")
         const sqliteFile = options.sqlite ? parse(options.sqlite.filepath) : undefined
 
-        const usingSQLiteText = options.sqlite ? `SQLITE: "${sqliteFile?.name}${sqliteFile?.ext}"` : "IN MEMORY"
-        this.sendLog(`\n📡  [\x1b[32mWEB SERVER STARTED ${date}, ${usingSQLiteText}\x1b[0m] 📡\n`)
+        const usingDatabaseText = options.sqlite ? `SQLITE: "${sqliteFile?.name}${sqliteFile?.ext}"` : options.postgres ? "POSTGRES" : "NO DATABASE"
+        this.sendLog(`\n📡  [\x1b[32mWEB SERVER STARTED ${date}, ${usingDatabaseText}\x1b[0m] 📡\n`)
 
         this.ws.on("connection", async (ws, req) => {
             if (options.password) {
-                // Parse cookies from the 'req' headers
                 const cookies = parseCookie(req.headers.cookie || "")
 
-                // Example: Check for a specific cookie
                 if (cookies.authToken !== this.authToken) {
-                    ws.close(1008, "Unauthorized") // Close connection if unauthorized
+                    ws.close(1008, "Unauthorized")
                     return
                 }
             }
@@ -95,13 +123,17 @@ export default class WebTransport extends Transport {
     }
 
     async sendLog(log: string) {
-        if (this.database) {
-            const insert = this.database.prepare<[string, number]>("INSERT INTO logs (log, date) VALUES (?, ?)")
+        if (this.sqLiteDatabase) {
+            const insert = this.sqLiteDatabase.prepare<[string, number]>("INSERT INTO logs (log, date) VALUES (?, ?)")
 
             insert.run(log, Date.now())
-        } else {
-            this.logs.push(log)
         }
+
+        if (this.postgresDatabase) {
+            this.postgresDatabase.query("INSERT INTO logs (log, date) VALUES ($1, $2)", [log, new Date()])
+        }
+
+        this.logs.push(log)
 
         this.ws.clients.forEach((client) => {
             client.send(
@@ -114,8 +146,8 @@ export default class WebTransport extends Transport {
     }
 
     async loadLogs() {
-        if (this.database) {
-            const select = this.database.prepare<[number, number], { log: string }>(
+        if (this.sqLiteDatabase) {
+            const select = this.sqLiteDatabase.prepare<[number, number], { log: string }>(
                 "SELECT log FROM logs WHERE date > ? ORDER BY date DESC LIMIT ?"
             )
 
@@ -123,9 +155,20 @@ export default class WebTransport extends Transport {
                 .all(this.options.sqlite?.pragnationDate || 0, this.options.sqlite?.pragnationLimit || 100000)
                 .map((row) => row.log)
                 .reverse()
-        } else {
-            return this.logs
         }
+
+        if (this.postgresDatabase) {
+            const select = await this.postgresDatabase.query("SELECT log FROM logs WHERE date > $1 ORDER BY date DESC LIMIT $2", [
+                new Date(this.options.postgres?.pragnationDate || 0),
+                this.options.postgres?.pragnationLimit || 100000
+            ])
+
+            console.log(select.rows)
+
+            return select.rows.map((row: { log: string }) => row.log).reverse()
+        }
+
+        return this.logs
     }
 
     public async log(info: any, next: () => void) {
@@ -139,6 +182,8 @@ export default class WebTransport extends Transport {
     public async close() {
         this.server.close()
         this.ws.close()
-        this.database.close()
+
+        if (this.sqLiteDatabase) this.sqLiteDatabase.close()
+        if (this.postgresDatabase) this.postgresDatabase.end()
     }
 }
