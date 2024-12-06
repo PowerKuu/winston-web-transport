@@ -5,10 +5,12 @@ var __importDefault =
         return mod && mod.__esModule ? mod : { default: mod }
     }
 Object.defineProperty(exports, "__esModule", { value: true })
-exports.createLogger = void 0
+exports.createLogger = createLogger
 const winston_1 = __importDefault(require("winston"))
 const main_1 = __importDefault(require("../src/main"))
 const path_1 = require("path")
+const dotenv_1 = __importDefault(require("dotenv"))
+dotenv_1.default.config()
 function createLogger() {
     const logger = winston_1.default.createLogger({
         format: winston_1.default.format.combine(
@@ -30,18 +32,24 @@ function createLogger() {
         transports: [
             new winston_1.default.transports.Console(),
             new main_1.default({
-                port: 3000,
+                port: 3005,
                 password: "123",
+                /*
+                postgres: {
+                    connectionUri: process.env.DATABASE_URL,
+                    rejectUnauthorized: false,
+                    logVersion: "1.0"
+                }*/
                 sqlite: {
-                    filepath: (0, path_1.join)(__dirname, "logs.db")
+                    filepath: (0, path_1.join)(__dirname, "logs.db"),
+                    table: "logs2"
                 }
             })
         ]
     })
     return logger
 }
-exports.createLogger = createLogger
 const logger = createLogger()
 setInterval(() => {
-    logger.info("Hello, world!")
-}, 5000)
+    logger.info("Hello, worldsss!")
+}, 2000)

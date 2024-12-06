@@ -184,6 +184,9 @@ https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css
                 const protocol = location.protocol === "https:" ? "wss" : "ws"
                 const ws = new WebSocket(`${protocol}://${location.host}`)
 
+                let recivedLogs = false
+                const logsBuffer = []
+
                 ws.onmessage = ({ data: rawData }) => {
                     const data = JSON.parse(rawData)
 
@@ -191,10 +194,22 @@ https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css
                         for (const log of data.data) {
                             term.writeln(log)
                         }
+
+                        if (!recivedLogs) {
+                            recivedLogs = true
+
+                            for (const log of logsBuffer) {
+                                term.writeln(log)
+                            }
+                        }
                     }
 
                     if (data.event == "log") {
-                        term.writeln(data.data)
+                        if (recivedLogs) {
+                            term.writeln(data.data)
+                        } else {
+                            logsBuffer.push(data.data)
+                        }
                     }
                 }
 

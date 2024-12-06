@@ -31,9 +31,15 @@ export function createLogger() {
             new WebTransport({
                 port: 3005,
                 password: "123",
+                /*
                 postgres: {
                     connectionUri: process.env.DATABASE_URL,
-                    pragnationLimit: 10
+                    rejectUnauthorized: false,
+                    logVersion: "1.0"
+                }*/
+                sqlite: {
+                    filepath: join(__dirname, "logs.db"),
+                    table: "logs2"
                 }
             })
         ]
@@ -44,5 +50,5 @@ export function createLogger() {
 
 const logger = createLogger()
 setInterval(() => {
-    logger.info("Hello, world!")
-}, 5000)
+    logger.info("Hello, worldsss!")
+}, 2000)

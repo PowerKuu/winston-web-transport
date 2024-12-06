@@ -14,6 +14,7 @@ const crypto_1 = __importDefault(require("crypto"))
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"))
 const moment_1 = __importDefault(require("moment"))
 const fs_1 = require("fs")
+const pg_1 = require("pg")
 class WebTransport extends winston_transport_1.default {
     constructor(options) {
         super(options)
@@ -35,23 +36,51 @@ class WebTransport extends winston_transport_1.default {
         })
         if (options.sqlite) {
             ;(0, fs_1.mkdirSync)((0, path_1.parse)(options.sqlite.filepath).dir, { recursive: true })
-            this.database = new better_sqlite3_1.default(options.sqlite.filepath)
-            // With date as number
-            this.database.exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, log TEXT, date INTEGER)")
+            this.sqLiteDatabase = new better_sqlite3_1.default(options.sqlite.filepath)
+            this.sqLiteDatabase.exec(
+                `CREATE TABLE IF NOT EXISTS ${options.sqlite.table} (id INTEGER PRIMARY KEY, log TEXT, date TIMESTAMP)`
+            )
+        }
+        if (options.postgres) {
+            if (options.postgres.rejectUnauthorized == false) {
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+            }
+            this.postgresDatabase = new pg_1.Client({
+                connectionString: options.postgres.connectionUri,
+                ssl: {
+                    rejectUnauthorized: options.postgres.rejectUnauthorized == false ? false : true
+                }
+            })
+            this.postgresDatabase.connect()
+            this.postgresDatabase.query(`
+                CREATE TABLE IF NOT EXISTS ${options.postgres.table} (
+                    id SERIAL PRIMARY KEY,
+                    log TEXT,
+                    date TIMESTAMP
+                )
+            `)
         }
         this.server = app.listen(options.port)
         this.ws = new ws_1.WebSocketServer({ server: this.server })
         const date = (0, moment_1.default)().format(options.dateFormat || "YYYY-MM-DD HH:mm:ss")
         const sqliteFile = options.sqlite ? (0, path_1.parse)(options.sqlite.filepath) : undefined
-        const usingSQLiteText = options.sqlite ? `SQLITE: "${sqliteFile?.name}${sqliteFile?.ext}"` : "IN MEMORY"
-        this.sendLog(`\n📡  [\x1b[32mWEB SERVER STARTED ${date}, ${usingSQLiteText}\x1b[0m] 📡\n`)
+        const logVersion = options.sqlite?.logVersion || options.postgres?.logVersion || ""
+        const logVersionText = logVersion ? `, LOG VERSION: ${logVersion}` : ""
+        const table = options.sqlite?.table || options.postgres?.table
+        const tableText = table ? `, TABLE: ${table}` : ""
+        const usingDatabaseText = options.sqlite
+            ? `SQLITE(${sqliteFile?.name}${sqliteFile?.ext})`
+            : options.postgres
+              ? "POSTGRES"
+              : "MEMORY"
+        this.sendLog(
+            `\n📡  [\x1b[32mWEB SERVER STARTED ${date}, DATABASE: ${usingDatabaseText}${tableText}${logVersionText}\x1b[0m] 📡\n`
+        )
         this.ws.on("connection", async (ws, req) => {
             if (options.password) {
-                // Parse cookies from the 'req' headers
                 const cookies = (0, cookie_1.parse)(req.headers.cookie || "")
-                // Example: Check for a specific cookie
                 if (cookies.authToken !== this.authToken) {
-                    ws.close(1008, "Unauthorized") // Close connection if unauthorized
+                    ws.close(1008, "Unauthorized")
                     return
                 }
             }
@@ -64,12 +93,19 @@ class WebTransport extends winston_transport_1.default {
         })
     }
     async sendLog(log) {
-        if (this.database) {
-            const insert = this.database.prepare("INSERT INTO logs (log, date) VALUES (?, ?)")
+        if (this.sqLiteDatabase && this.options.sqlite) {
+            const insert = this.sqLiteDatabase.prepare(
+                `INSERT INTO ${this.options.sqlite.table} (log, date) VALUES (?, ?)`
+            )
             insert.run(log, Date.now())
-        } else {
-            this.logs.push(log)
         }
+        if (this.postgresDatabase && this.options.postgres) {
+            this.postgresDatabase.query(`INSERT INTO ${this.options.postgres.table} (log, date) VALUES ($1, $2)`, [
+                log,
+                new Date()
+            ])
+        }
+        this.logs.push(log)
         this.ws.clients.forEach((client) => {
             client.send(
                 JSON.stringify({
@@ -80,15 +116,29 @@ class WebTransport extends winston_transport_1.default {
         })
     }
     async loadLogs() {
-        if (this.database) {
-            const select = this.database.prepare("SELECT log FROM logs WHERE date > ? ORDER BY date DESC LIMIT ?")
+        if (this.sqLiteDatabase && this.options.sqlite) {
+            const select = this.sqLiteDatabase.prepare(
+                `SELECT log FROM ${this.options.sqlite.table} WHERE date > ? ORDER BY date DESC LIMIT ?`
+            )
             return select
-                .all(this.options.sqlite?.pragnationDate || 0, this.options.sqlite?.pragnationLimit || 100000)
+                .all(
+                    this.options.sqlite?.paginationnDate?.getTime() || 0,
+                    this.options.sqlite?.paginationnLimit || 100000
+                )
                 .map((row) => row.log)
                 .reverse()
-        } else {
-            return this.logs
         }
+        if (this.postgresDatabase && this.options.postgres) {
+            const select = await this.postgresDatabase.query(
+                `SELECT log FROM ${this.options.postgres.table} WHERE date > $1 ORDER BY date DESC LIMIT $2`,
+                [
+                    new Date(this.options.postgres?.paginationnDate?.getTime() || 0),
+                    this.options.postgres?.paginationnLimit || 100000
+                ]
+            )
+            return select.rows.map((row) => row.log).reverse()
+        }
+        return this.logs
     }
     async log(info, next) {
         const log = info[Symbol.for("message")]
@@ -98,7 +148,8 @@ class WebTransport extends winston_transport_1.default {
     async close() {
         this.server.close()
         this.ws.close()
-        this.database.close()
+        if (this.sqLiteDatabase) this.sqLiteDatabase.close()
+        if (this.postgresDatabase) this.postgresDatabase.end()
     }
 }
 exports.default = WebTransport

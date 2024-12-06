@@ -1,8 +1,8 @@
-/// <reference types="node" />
 import Transport from "winston-transport"
 import http from "http"
 import { WebSocketServer } from "ws"
-import Database from "better-sqlite3"
+import SQLiteDatabase from "better-sqlite3"
+import { Client as postgresDatabase } from "pg"
 export default class WebTransport extends Transport {
     options: Transport.TransportStreamOptions & {
         port: number
@@ -10,15 +10,26 @@ export default class WebTransport extends Transport {
         dateFormat?: string
         sqlite?: {
             filepath: string
-            pragnationDate?: number
-            pragnationLimit?: number
+            table: string
+            paginationnDate?: Date
+            paginationnLimit?: number
+            logVersion?: string
+        }
+        postgres?: {
+            connectionUri: string
+            table: string
+            paginationnDate?: Date
+            paginationnLimit?: number
+            rejectUnauthorized?: boolean
+            logVersion?: string
         }
     }
     server: http.Server
     logs: string[]
     ws: WebSocketServer
     authToken: string
-    database: Database.Database
+    sqLiteDatabase?: SQLiteDatabase.Database
+    postgresDatabase?: postgresDatabase
     constructor(
         options: Transport.TransportStreamOptions & {
             port: number
@@ -26,8 +37,18 @@ export default class WebTransport extends Transport {
             dateFormat?: string
             sqlite?: {
                 filepath: string
-                pragnationDate?: number
-                pragnationLimit?: number
+                table: string
+                paginationnDate?: Date
+                paginationnLimit?: number
+                logVersion?: string
+            }
+            postgres?: {
+                connectionUri: string
+                table: string
+                paginationnDate?: Date
+                paginationnLimit?: number
+                rejectUnauthorized?: boolean
+                logVersion?: string
             }
         }
     )

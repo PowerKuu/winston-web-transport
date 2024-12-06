@@ -1,6 +1,6 @@
 {
     "name": "winston-web-transport",
-    "version": "1.0.5",
+    "version": "1.0.7",
     "main": "./dist/src/main.js",
     "types": "./dist/src/main.d.ts",
     "scripts": {

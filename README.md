@@ -45,29 +45,34 @@ export function createLogger() {
                 dateFormat?: string
 
                 sqlite?: {
-                    pragnationDate?: number
-                    pragnationLimit?: number
-                } & (
-                    {
-                        filepath: string
-                        remote?: never
-                    }
-                    | {
-                        filepath?: never
-                        remote: {
-                            url: string
-                            username: string
-                            password: string
-                        }
-                    }
-                )
+                    filepath: string
+                    table: string
+
+                    paginationnDate?: Date
+                    paginationnLimit?: number
+
+                    logVersion?: string
+                }
+
+                postgres?: {
+                    connectionUri: string
+                    table: string
+
+                    paginationnDate?: Date
+                    paginationnLimit?: number
+
+                    rejectUnauthorized?: boolean
+
+                    logVersion?: string
+                }
             }
             */
             new WebTransport({
                 port: 3000,
                 password: "123",
                 sqlite: {
-                    filepath: join(__dirname, "logs.db")
+                    filepath: join(__dirname, "logs.db"),
+                    table: "logs"
                 }
             })
         ]

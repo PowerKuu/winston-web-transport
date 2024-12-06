@@ -15,7 +15,6 @@ import { mkdirSync } from "fs"
 
 import { Client as postgresDatabase } from "pg"
 
-
 export default class WebTransport extends Transport {
     server: http.Server
     logs: string[] = []
@@ -31,18 +30,27 @@ export default class WebTransport extends Transport {
             port: number
             password?: string
             dateFormat?: string
-        
+
             sqlite?: {
                 filepath: string
-                pragnationDate?: number
-                pragnationLimit?: number
+                table: string
+
+                paginationnDate?: Date
+                paginationnLimit?: number
+
+                logVersion?: string
             }
 
             postgres?: {
                 connectionUri: string
+                table: string
 
-                pragnationDate?: number
-                pragnationLimit?: number
+                paginationnDate?: Date
+                paginationnLimit?: number
+
+                rejectUnauthorized?: boolean
+
+                logVersion?: string
             }
         }
     ) {
@@ -71,22 +79,27 @@ export default class WebTransport extends Transport {
             mkdirSync(parse(options.sqlite.filepath).dir, { recursive: true })
             this.sqLiteDatabase = new SQLiteDatabase(options.sqlite.filepath)
 
-            // With date as number
-            this.sqLiteDatabase.exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, log TEXT, date INTEGER)")
+            this.sqLiteDatabase.exec(
+                `CREATE TABLE IF NOT EXISTS ${options.sqlite.table} (id INTEGER PRIMARY KEY, log TEXT, date TIMESTAMP)`
+            )
         }
 
         if (options.postgres) {
+            if (options.postgres.rejectUnauthorized == false) {
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+            }
+
             this.postgresDatabase = new postgresDatabase({
                 connectionString: options.postgres.connectionUri,
                 ssl: {
-                    rejectUnauthorized: false
+                    rejectUnauthorized: options.postgres.rejectUnauthorized == false ? false : true
                 }
             })
 
             this.postgresDatabase.connect()
 
             this.postgresDatabase.query(`
-                CREATE TABLE IF NOT EXISTS logs (
+                CREATE TABLE IF NOT EXISTS ${options.postgres.table} (
                     id SERIAL PRIMARY KEY,
                     log TEXT,
                     date TIMESTAMP
@@ -99,9 +112,21 @@ export default class WebTransport extends Transport {
 
         const date = moment().format(options.dateFormat || "YYYY-MM-DD HH:mm:ss")
         const sqliteFile = options.sqlite ? parse(options.sqlite.filepath) : undefined
+        const logVersion = options.sqlite?.logVersion || options.postgres?.logVersion || ""
+        const logVersionText = logVersion ? `, LOG VERSION: ${logVersion}` : ""
 
-        const usingDatabaseText = options.sqlite ? `SQLITE: "${sqliteFile?.name}${sqliteFile?.ext}"` : options.postgres ? "POSTGRES" : "NO DATABASE"
-        this.sendLog(`\n📡  [\x1b[32mWEB SERVER STARTED ${date}, ${usingDatabaseText}\x1b[0m] 📡\n`)
+        const table = options.sqlite?.table || options.postgres?.table
+        const tableText = table ? `, TABLE: ${table}` : ""
+
+        const usingDatabaseText = options.sqlite
+            ? `SQLITE(${sqliteFile?.name}${sqliteFile?.ext})`
+            : options.postgres
+              ? "POSTGRES"
+              : "MEMORY"
+
+        this.sendLog(
+            `\n📡  [\x1b[32mWEB SERVER STARTED ${date}, DATABASE: ${usingDatabaseText}${tableText}${logVersionText}\x1b[0m] 📡\n`
+        )
 
         this.ws.on("connection", async (ws, req) => {
             if (options.password) {
@@ -123,14 +148,19 @@ export default class WebTransport extends Transport {
     }
 
     async sendLog(log: string) {
-        if (this.sqLiteDatabase) {
-            const insert = this.sqLiteDatabase.prepare<[string, number]>("INSERT INTO logs (log, date) VALUES (?, ?)")
+        if (this.sqLiteDatabase && this.options.sqlite) {
+            const insert = this.sqLiteDatabase.prepare<[string, number]>(
+                `INSERT INTO ${this.options.sqlite.table} (log, date) VALUES (?, ?)`
+            )
 
             insert.run(log, Date.now())
         }
 
-        if (this.postgresDatabase) {
-            this.postgresDatabase.query("INSERT INTO logs (log, date) VALUES ($1, $2)", [log, new Date()])
+        if (this.postgresDatabase && this.options.postgres) {
+            this.postgresDatabase.query(`INSERT INTO ${this.options.postgres.table} (log, date) VALUES ($1, $2)`, [
+                log,
+                new Date()
+            ])
         }
 
         this.logs.push(log)
@@ -146,24 +176,28 @@ export default class WebTransport extends Transport {
     }
 
     async loadLogs() {
-        if (this.sqLiteDatabase) {
+        if (this.sqLiteDatabase && this.options.sqlite) {
             const select = this.sqLiteDatabase.prepare<[number, number], { log: string }>(
-                "SELECT log FROM logs WHERE date > ? ORDER BY date DESC LIMIT ?"
+                `SELECT log FROM ${this.options.sqlite.table} WHERE date > ? ORDER BY date DESC LIMIT ?`
             )
 
             return select
-                .all(this.options.sqlite?.pragnationDate || 0, this.options.sqlite?.pragnationLimit || 100000)
+                .all(
+                    this.options.sqlite?.paginationnDate?.getTime() || 0,
+                    this.options.sqlite?.paginationnLimit || 100000
+                )
                 .map((row) => row.log)
                 .reverse()
         }
 
-        if (this.postgresDatabase) {
-            const select = await this.postgresDatabase.query("SELECT log FROM logs WHERE date > $1 ORDER BY date DESC LIMIT $2", [
-                new Date(this.options.postgres?.pragnationDate || 0),
-                this.options.postgres?.pragnationLimit || 100000
-            ])
-
-            console.log(select.rows)
+        if (this.postgresDatabase && this.options.postgres) {
+            const select = await this.postgresDatabase.query(
+                `SELECT log FROM ${this.options.postgres.table} WHERE date > $1 ORDER BY date DESC LIMIT $2`,
+                [
+                    new Date(this.options.postgres?.paginationnDate?.getTime() || 0),
+                    this.options.postgres?.paginationnLimit || 100000
+                ]
+            )
 
             return select.rows.map((row: { log: string }) => row.log).reverse()
         }
